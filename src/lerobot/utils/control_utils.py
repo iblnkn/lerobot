@@ -18,6 +18,7 @@
 
 
 import logging
+import random
 import traceback
 from contextlib import nullcontext
 from copy import copy
@@ -139,10 +140,38 @@ def init_keyboard_listener():
     # Allow to exit early while recording an episode or resetting the environment,
     # by tapping the right arrow key '->'. This might require a sudo permission
     # to allow your terminal to monitor keyboard events.
-    events = {}
-    events["exit_early"] = False
-    events["rerecord_episode"] = False
-    events["stop_recording"] = False
+    # Keys/phrases mapping for task selection. Feel free to modify to match your set-up.
+    # Values can be a single string or a list of strings. If a list is provided one
+    # variant is chosen at random at each key press.
+    TASK_KEYS: dict[str, str | list[str]] = {
+        # A → “pick-up-block” family (10+ ways)
+        "a": [
+            "Pick up the block",
+            "Grasp the cube",
+            "Lift the block off the table",
+            "Grab the block",
+            "Seize the cube",
+            "Pick the block straight up",
+            "Raise the block vertically",
+            "Collect the cube",
+            "Snatch the block",
+            "Acquire the cube",
+        ],
+        # B–E map to single task strings (extend as needed)
+        "b": "Place the block in the bowl",
+        "c": "Stack two blocks",
+        "d": "Sweep the table",
+        "e": "Reset to home position",
+    }
+
+    events = {
+        "exit_early": False,  # reuse → behaviour for early stop / start
+        "rerecord_episode": False,  # ← to scrap current ep
+        "stop_recording": False,  # ESC to finish session
+        # New fields for per-episode task selection
+        "next_task": None,  # task string chosen for upcoming episode
+        "task_selected": False,  # latch that a valid task key was pressed
+    }
 
     if is_headless():
         logging.warning(
@@ -167,6 +196,26 @@ def init_keyboard_listener():
                 print("Escape key pressed. Stopping data recording...")
                 events["stop_recording"] = True
                 events["exit_early"] = True
+            else:
+                # Check for alphanumeric task selection keys
+                try:
+                    key_char = key.char.lower()
+                except AttributeError:
+                    key_char = None
+
+                if key_char and key_char in TASK_KEYS:
+                    variants = TASK_KEYS[key_char]
+                    if isinstance(variants, list):
+                        task_name = random.choice(variants)
+                    else:
+                        task_name = variants
+
+                    # Store for the main loop and trigger an early exit so the reset
+                    # window ends immediately and the next episode starts.
+                    events["next_task"] = task_name
+                    events["task_selected"] = True
+                    events["exit_early"] = True
+
         except Exception as e:
             print(f"Error handling key press: {e}")
 

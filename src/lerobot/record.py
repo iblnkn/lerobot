@@ -338,7 +338,29 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
     with VideoEncodingManager(dataset):
         recorded_episodes = 0
         while recorded_episodes < cfg.dataset.num_episodes and not events["stop_recording"]:
-            log_say(f"Recording episode {dataset.num_episodes}", cfg.play_sounds)
+
+            # ------------------------------------------------------------------
+            # Wait until the operator selects a task via keyboard (A-E etc.).
+            # This blocks during the reset window; as soon as a valid key is
+            # pressed `init_keyboard_listener` will set `task_selected` and we
+            # proceed immediately – giving “early-start” behaviour.
+            # ------------------------------------------------------------------
+            while not events["task_selected"] and not events["stop_recording"]:
+                time.sleep(0.05)
+
+            if events["stop_recording"]:
+                break
+
+            current_task = events.get("next_task") or cfg.dataset.single_task
+
+            # Reset the latch for the next episode
+            events["task_selected"] = False
+
+            log_say(
+                f"Recording episode {recorded_episodes + 1}/{cfg.dataset.num_episodes}: {current_task}",
+                cfg.play_sounds,
+            )
+
             record_loop(
                 robot=robot,
                 events=events,
@@ -347,7 +369,7 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
                 policy=policy,
                 dataset=dataset,
                 control_time_s=cfg.dataset.episode_time_s,
-                single_task=cfg.dataset.single_task,
+                single_task=current_task,
                 display_data=cfg.display_data,
             )
 
@@ -363,7 +385,7 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
                     fps=cfg.dataset.fps,
                     teleop=teleop,
                     control_time_s=cfg.dataset.reset_time_s,
-                    single_task=cfg.dataset.single_task,
+                    single_task=current_task,
                     display_data=cfg.display_data,
                 )
 
